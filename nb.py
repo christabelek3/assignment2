@@ -30,7 +30,8 @@ def build_dataframe(folder):
         :param df: an empty pandas DataFrame
         :return: updated pandas DataFrames
         """
-        for f in path.glob(f"./{dir_name}/*.txt"):
+        entries = []
+        for f in Path(dir_name).glob("*.txt"):
             with open(f) as fp:
                 text = fp.read()
                 # TODO If the directory name is either kennedy or johnson,
@@ -39,7 +40,8 @@ def build_dataframe(folder):
                 #  contains the text from the opened file. Note that you want
                 #  a single DataFrame, but you loop over numerous files.
                 if dir_name in ("kennedy", "johnson"):
-                    ...
+                    author = dir_name
+                    entries.append([author,text])
                 else:
                     # TODO Otherwise, we want to create a DataFrame for the
                     #  unlabeled data in a similar fashion. But this is a
@@ -47,7 +49,12 @@ def build_dataframe(folder):
                     #  the directory but instead from the file name. Again,
                     #  the field "author" should have the author's name and
                     #  the field "text" should contain the text.
-                    ...
+                    if "kennedy" in f.name.lower():
+                        author = "kennedy"
+                    else:
+                        author = "johnson"
+                    entries.append([author,text])
+        df = pd.DataFrame(entries, columns=["author","text"])
         return df
 
     for p in path.iterdir():
@@ -73,23 +80,40 @@ def train_nb(df, alpha=0.1):
     #  file to a unique index. Also, create variables for the number of
     #  documents and the number of classes. Use df.shape for the vocabulary
     #  and the nunique() method for the number of classes
-    vocabulary = ...
-    n_docs = ...
-    n_classes = ...
-    # TODO Compute the priors
-    priors = ...
+    words = []
+    for text in df[text]:
+        word += text.split()
+    vocabulary = {word: idx for idx, word in enumerate(set(words))}
+    n_docs = df.shape[0]
+    n_classes = df["author"].nunique()
+    # TODO Compute the priors P(class) = (# docs in class) / (# docs total)
+    priors = np.zeros(n_classes)
+    for c in range(0,n_classes):
+        priors[c] = (df["author"]==c).sum() / n_docs
+
     # TODO Create a matrix containing all 0s called training_matrix of size
     #  (n_docs, len(vocabulary)), then fill it with the counts of each word
     #  for each document. This is the bag-of-words matrix for all the documents
-    training_matrix = ...
-    ...
+    training_matrix = np.zeros((n_docs, len(vocabulary)))
+    for textn, text in enumerate(df["text"]):
+        for word in text.split():
+            training_matrix[textn, vocabulary[word]] += 1 #equals what was there +1, counting
     # TODO Get word counts for both classes
-    word_counts_per_class = ...
+    author_labels = df["author"].to_numpy()
+    # Get word counts for both classes
+    word_counts_per_class = np.zeros((n_classes, len(vocabulary)))
+    for author in np.unique(df["author"]):
+        word_counts_per_class[author] = training_matrix[author_labels == author].sum(axis=0)
+
     # TODO Initialize a matrix to store the likelihoods
-    likelihoods = ...
+    likelihoods = np.zeros((n_classes, len(vocabulary)))
 
     # TODO Then fill it in using Lidstone smoothing
-    ...
+    for c in range(n_classess):
+        total_words_c = word_counts_per_class[c].sum
+        likelihoods[c] = (word_counts_per_class[c] + alpha) / (
+            total_words_c + alpha * len(vocabulary) 
+
     return vocabulary, priors, likelihoods
 
 
