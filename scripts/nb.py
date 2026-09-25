@@ -9,6 +9,10 @@ from sklearn import metrics
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.feature_extraction.text import CountVectorizer
 
+# nb.py lives in scripts/, so the project root is one level up
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DATA_DIR = PROJECT_ROOT / "data"
+
 
 def build_dataframe(folder):
     """
@@ -209,7 +213,8 @@ def plot_confusion_matrix(conf_matrix_data, labels, filename):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Naive Bayes Algorithm")
-    parser.add_argument("-f", "--indir", required=True, help="Data directory")
+    parser.add_argument("-f", "--indir", default=DATA_DIR,
+                        help="Data directory (default: <project root>/data)")
     args = parser.parse_args()
 
     training_df, test_df = build_dataframe(args.indir)
@@ -226,4 +231,28 @@ if __name__ == "__main__":
     print("My predicted labels", class_predictions)
     acc, f1, conf = get_metrics(test_df["author"], class_predictions)
     print("My algorithm metrics (alpha = 0.1)\n Accuracy:", acc, "\n F1 ", f1)
-    plot_confusion_matrix(conf, [0, 1], "conf.
+    plot_confusion_matrix(conf, [0, 1], PROJECT_ROOT / "myconf.jpg")
+
+    vocabulary1, priors1, likelihoods1 = train_nb(training_df, 1)
+    print(" -------------------\n For alpha = 1")
+    print("Priors (Kennedy):", priors1[0])
+    print("Priors (Johnson):", priors1[1])
+    print(likelihoods1.shape)
+    class_predictions1 = test(test_df, vocabulary1, priors1, likelihoods1)
+    acc, f1, conf = get_metrics(test_df["author"], class_predictions1)
+    print("My algorithm metrics (alpha = 1)\n Accuracy:", acc, "\n F1 ", f1)
+
+    vocabulary01, priors01, likelihoods01 = train_nb(training_df, 0.01)
+    print(" -------------------\n For alpha = 0.01")
+    print("Priors (Kennedy):", priors01[0])
+    print("Priors (Johnson):", priors01[1])
+    print(likelihoods01.shape)
+    class_predictions01 = test(test_df, vocabulary01, priors01, likelihoods01)
+    acc, f1, conf = get_metrics(test_df["author"], class_predictions01)
+    print("My algorithm metrics (alpha = 0.01)\n Accuracy:", acc, "\n F1 ", f1,"\n \n")
+
+    
+    sklearn_preds = sklearn_nb(training_df, test_df)
+    sklearn_metrics = get_metrics(test_df["author"], sklearn_preds)
+    print("Scikit learn NB metrics\n Accuracy:", sklearn_metrics[0], "\n F1 ", sklearn_metrics[1])
+    plot_confusion_matrix(sklearn_metrics[2], [0, 1], PROJECT_ROOT / "scikitconf.jpg")
