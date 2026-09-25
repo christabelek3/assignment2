@@ -39,8 +39,8 @@ def build_dataframe(folder):
                 #  the directory name and there is a field "text" which
                 #  contains the text from the opened file. Note that you want
                 #  a single DataFrame, but you loop over numerous files.
-                if dir_name in ("kennedy", "johnson"):
-                    author = dir_name
+                if dir_name.name in ("kennedy", "johnson"):
+                    author = dir_name.name
                     entries.append([author,text])
                 else:
                     # TODO Otherwise, we want to create a DataFrame for the
@@ -54,14 +54,14 @@ def build_dataframe(folder):
                     else:
                         author = "johnson"
                     entries.append([author,text])
-        df = pd.DataFrame(entries, columns=["author","text"])
-        return df
+        new_df = pd.DataFrame(entries, columns=["author","text"])
+        return pd.concat([df, new_df], ignore_index = True)
 
     for p in path.iterdir():
         if p.name in ("kennedy", "johnson"):
-            df_train = make_df_from_dir(p.name, df_train)
+            df_train = make_df_from_dir(p, df_train)
         elif p.name == "unlabeled":
-            df_test = make_df_from_dir(p.name, df_test)
+            df_test = make_df_from_dir(p, df_test)
     # replace the strings for the author names with numeric codes (0, 1)
     df_train["author"] = df_train["author"].apply(lambda x: author_to_id_map.get(x))
     # do the same for the test data
@@ -81,8 +81,8 @@ def train_nb(df, alpha=0.1):
     #  documents and the number of classes. Use df.shape for the vocabulary
     #  and the nunique() method for the number of classes
     words = []
-    for text in df[text]:
-        word += text.split()
+    for text in df["text"]:
+        words += text.split()
     vocabulary = {word: idx for idx, word in enumerate(set(words))}
     n_docs = df.shape[0]
     n_classes = df["author"].nunique()
@@ -109,10 +109,9 @@ def train_nb(df, alpha=0.1):
     likelihoods = np.zeros((n_classes, len(vocabulary)))
 
     # TODO Then fill it in using Lidstone smoothing
-    for c in range(n_classess):
-        total_words_c = word_counts_per_class[c].sum
-        likelihoods[c] = (word_counts_per_class[c] + alpha) / (
-            total_words_c + alpha * len(vocabulary) 
+    for c in range(n_classes):
+        total_words_c = word_counts_per_class[c].sum()
+        likelihoods[c] = (word_counts_per_class[c] + alpha) / (total_words_c + alpha * len(vocabulary))
 
     return vocabulary, priors, likelihoods
 
@@ -129,11 +128,17 @@ def test(df, vocabulary, priors, likelihoods):
         test_vector = np.zeros(shape=(len(vocabulary)))
         # TODO Fill test_vector with counts for the words that appear in the
         #  vocabulary
-        ...
+        for word in text.split():
+            if word in vocabulary:
+                test_vector[vocabulary[word]] += 1
+
         # TODO Compute predictions p(y|text)
-        preds = ...
+        log_priors = np.log(priors)
+        log_likelihoods = np.log(likelihoods)
+        preds = log_priors + (test_vector * log_likelihoods).sum(axis=1) #basically sum for each class (horizontally)
+
         # TODO Then get your predictions, yhat
-        yhat = ...
+        yhat = int(np.argmax(preds))
         class_predictions.append(yhat)
     return class_predictions
 
@@ -148,19 +153,19 @@ def sklearn_nb(training_df, test_df):
     vectorizer = CountVectorizer()
 
     # TODO Fit the vectorizer on the training set text
-    vectorizer.fit(...)
+    vectorizer.fit(training_df["text"])
 
     # TODO Then transform the text using the vectorizer
-    training_data = vectorizer.transform(...)
+    training_data = vectorizer.transform(training_df["text"])
     training_data.toarray()
 
     # Do the same for the test data
-    test_data = vectorizer.transform(...)
+    test_data = vectorizer.transform(test_df["text"])
     test_data.toarray()
 
     nb_classifier = MultinomialNB()
     # TODO Fit the Naive Bayes classifier
-    nb_classifier.fit(...)
+    nb_classifier.fit(training_data, training_df["author"])
 
     pred_nb = nb_classifier.predict(test_data)
     return pred_nb
@@ -174,25 +179,30 @@ def get_metrics(true, preds):
     :return: a tuple of various performance metrics
     """
     # TODO Compute performance measures
-    accuracy = metrics.accuracy_score(...)
-    f1_score = metrics.f1_score(...)
-    conf_matrix = metrics.confusion_matrix(...)
+    accuracy = metrics.accuracy_score(true, preds)
+    f1_score = metrics.f1_score(true, preds)
+    conf_matrix = metrics.confusion_matrix(true, preds)
 
     return accuracy, f1_score, conf_matrix
 
 
-def plot_confusion_matrix(conf_matrix_data, labels):
+def plot_confusion_matrix(conf_matrix_data, labels, filename):
     """
     Takes as input confusion matrix data from get_metrics() and prints out a
     confusion matrix
     :param conf_matrix_data:
+    :labels: labels for the axes
+    : 
     :return: None
     """
     plt.title("Confusion matrix")
-    axis = sns.heatmap(...)
-    axis.set_xticklabels(...)
-    axis.set_yticklabels(...)
+    axis = sns.heatmap(conf_matrix_data, annot=True, fmt = "d", cmap = "Blues")
+    axis.set_xticklabels(labels)
+    axis.set_yticklabels(labels)
     axis.set(xlabel="Predicted", ylabel="True")
+
+    #save plot
+    plt.savefig(filename)
     plt.show()
     return
 
@@ -203,9 +213,17 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     training_df, test_df = build_dataframe(args.indir)
+
     vocabulary, priors, likelihoods = train_nb(training_df)
+    print("alpha = 0.1")
+    print("Priors (Kennedy):", priors[0])
+    print("Priors (Johnson):", priors[1])
+    print(likelihoods.shape)  
+
     class_predictions = test(test_df, vocabulary, priors, likelihoods)
-    acc, f1, conf = get_metrics(test_df, class_predictions)
-    plot_confusion_matrix(conf, [0, 1])
-    sklearn_preds = sklearn_nb(training_df, test_df)
-    sklearn_metrics = get_metrics(test_df, sklearn_preds)
+    test_labels = test_df["author"].to_list()
+    print("actual test labels", test_labels)
+    print("My predicted labels", class_predictions)
+    acc, f1, conf = get_metrics(test_df["author"], class_predictions)
+    print("My algorithm metrics (alpha = 0.1)\n Accuracy:", acc, "\n F1 ", f1)
+    plot_confusion_matrix(conf, [0, 1], "conf.
